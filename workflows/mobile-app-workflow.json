@@ -1,0 +1,863 @@
+{
+  "name": "cv-screen-app-backend",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "c88501e4-a64b-4a03-bb33-d65b54c2d594",
+              "leftValue": "={{ $json.text.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1424,
+        0
+      ],
+      "id": "4c09061e-4154-4295-87db-b33fcb2cd760",
+      "name": "Not empty text"
+    },
+    {
+      "parameters": {
+        "jsCode": "let r = $input.first().json;\nr = r.message?.content ?? r.output?.[0]?.content?.[0]?.text ?? r.output ?? r;\nif (typeof r === 'string') r = JSON.parse(r.replace(/```json|```/g, '').trim());\n\nreturn [{ json: {\n  name: r.name || '',\n  email: r.email || '',\n  summary: r.summary || '',\n  skills: r.skills || [],\n  education: r.education || [],\n  experience: r.experience || [],\n  certifications: r.certifications || []\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        -96
+      ],
+      "id": "bc158bcc-b6da-4cd7-aa64-14dd618754e1",
+      "name": "Clean parsed CV1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const role = $('Get job').first().json;\nlet r = $input.first().json;\nr = r.message?.content ?? r.output?.[0]?.content?.[0]?.text ?? r.output ?? r;\nif (typeof r === 'string') r = JSON.parse(r.replace(/```json|```/g, '').trim());\n\nconst clamp = v => Math.max(0, Math.min(100, Number(v) || 0));\nconst w = {\n  skills: Number(role.W_Skills) || 40,\n  experience: Number(role.W_Experience) || 30,\n  education: Number(role.W_Education) || 20,\n  certs: Number(role.W_Certs) || 10\n};\nconst total = w.skills + w.experience + w.education + w.certs;\n\nconst overall = Math.round((\n  clamp(r.skillMatch) * w.skills +\n  clamp(r.experienceMatch) * w.experience +\n  clamp(r.educationMatch) * w.education +\n  clamp(r.certificationMatch) * w.certs\n) / total);\n\nconst status = overall >= 75 ? 'Strong Match'\n             : overall >= 50 ? 'Possible Match'\n             : 'Not a Match';\n\nreturn [{ json: {\n  overallScore: overall,\n  skillMatch: clamp(r.skillMatch),\n  experienceMatch: clamp(r.experienceMatch),\n  educationMatch: clamp(r.educationMatch),\n  certificationMatch: clamp(r.certificationMatch),\n  summary: r.aiSummary,\n  strengths: (r.strengths || []).join('\\n'),\n  weaknesses: (r.weaknesses || []).join('\\n'),\n  status\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        -96
+      ],
+      "id": "0c2ca7b6-8a76-41cb-a06f-cb0568f07208",
+      "name": "Calc Final Score"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI",
+          "cachedResultUrl": ""
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "You extract structured data from CVs. Respond with valid JSON only, no extra text."
+            },
+            {
+              "content": "=Extract structured information from this CV text. Be thorough and accurate. Use null for anything not found.\n\nCV TEXT: {{ $('Not empty text').item.json.text }}\n\nRespond in this exact JSON format:\n{\n  \"name\": \"<full name>\",\n  \"email\": \"<email or null>\",\n  \"phone\": \"<phone or null>\",\n  \"summary\": \"<brief professional summary>\",\n  \"education\": [\n    { \"institution\": \"<name>\", \"degree\": \"<degree title>\", \"field\": \"<field or null>\", \"year\": \"<graduation year or null>\" }\n  ],\n  \"experience\": [\n    { \"company\": \"<company>\", \"role\": \"<job title>\", \"duration\": \"<e.g. '2 years' or 'Jan 2020 - Dec 2022'>\", \"description\": \"<brief description>\" }\n  ],\n  \"skills\": [\"<skill1>\", \"<skill2>\"],\n  \"certifications\": [\"<cert1>\", \"<cert2>\"]\n}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1872,
+        -96
+      ],
+      "id": "0de13c7b-fcbf-48a1-82db-4b18cb0a4e39",
+      "name": "Parse CV",
+      "credentials": {
+        "openAiApi": {
+          "id": "JjmEix7oY8RzdLDo",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "You are an expert HR analyst. Score CVs against job requirements fairly, based only on role-relevant qualifications. Respond with valid JSON only, no extra text."
+            },
+            {
+              "content": "=Analyze this CV against the job requirements and score it.\n\nJOB REQUIREMENTS:\n- Title: {{ $('Get job').item.json.title }}\n- Required Skills: {{ $('Get job').item.json.skills }}\n- Required Experience: {{ $('Get job').item.json.experience_level }}\n- Education Level: {{ $('Get job').item.json.education_level }}\n- Additional if any Requirements: {{ $('Get job').item.json.additional_requirements }}\n\nCANDIDATE CV TEXT: {{ $('Parse CV').item.json.output[0].content[0].text }}\nCANDIDATE PARSED DATA:\n- Skills: {{ $('Clean parsed CV1').item.json.skills.join(', ') }}\n- Education: {{ $('Clean parsed CV1').item.json.education.map(e => e.degree + ' from ' + e.institution).join('; ') }}\n- Experience: {{ $('Clean parsed CV1').item.json.experience.map(e => e.role + ' at ' + e.company + ' (' + (e.duration || 'unknown') + ')').join('; ') }}\n- Certifications: {{ $('Clean parsed CV1').item.json.certifications.join(', ') }}\n\nScore each category from 0 to 100. If a requirement is \"Not specified\" or \"None specified\", score that category 100. Refer to the person only as \"The candidate\".\n\nRespond in this exact JSON format:\n{\n  \"overallScore\": <0-100>,\n  \"skillMatch\": <0-100>,\n  \"experienceMatch\": <0-100>,\n  \"educationMatch\": <0-100>,\n  \"certificationMatch\": <0-100>,\n  \"aiSummary\": \"<2-3 sentence summary of candidate fit>\",\n  \"strengths\": [\"<strength1>\", \"<strength2>\", \"<strength3>\"],\n  \"weaknesses\": [\"<weakness1>\", \"<weakness2>\"]\n}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        2448,
+        -96
+      ],
+      "id": "430393be-ba92-4acf-8d38-1bfb766e42d8",
+      "name": "Score CV",
+      "credentials": {
+        "openAiApi": {
+          "id": "JjmEix7oY8RzdLDo",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const toPgArray = (v) => {\n  let arr = v;\n  if (typeof arr === 'string') {\n    try { arr = JSON.parse(arr); } catch { arr = [arr]; }\n  }\n  if (!Array.isArray(arr)) arr = [];\n  return '{' + arr\n    .map(s => '\"' + String(s).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"')\n    .join(',') + '}';\n};\n\nconst item = $input.item.json;\n\nreturn {\n  json: {\n    ...item,\n    strengths: toPgArray(item.strengths),\n    weaknesses: toPgArray(item.weaknesses),\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3024,
+        -96
+      ],
+      "id": "5fd1f968-694b-41c9-b1fa-4608ec8a722b",
+      "name": "Array inputs"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "cv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "d5a4626a-a90f-4b4a-a5b8-22444064d51c",
+      "name": "Extract from CV"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "get",
+        "projectRef": "hyclzpjewvcuzxnmelnh",
+        "useCustomSchema": true,
+        "tableId": "jobs",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "title",
+              "keyValue": "={{ $('Webhook').item.json.body.job_title }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        -96
+      ],
+      "id": "e5d028c2-3d7a-431f-bf30-78d91f33f92e",
+      "name": "Get job",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseOAuth2Api": {
+          "id": "mxl1iTpyvUcGa7fB",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "projectRef": "hyclzpjewvcuzxnmelnh",
+        "tableId": "applications",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "name",
+              "fieldValue": "={{ $('Clean parsed CV1').item.json.name }}"
+            },
+            {
+              "fieldId": "overall_score",
+              "fieldValue": "={{ $json.overallScore }}"
+            },
+            {
+              "fieldId": "skill_match",
+              "fieldValue": "={{ $json.skillMatch }}"
+            },
+            {
+              "fieldId": "experience_match",
+              "fieldValue": "={{ $json.experienceMatch }}"
+            },
+            {
+              "fieldId": "education_match",
+              "fieldValue": "={{ $json.educationMatch }}"
+            },
+            {
+              "fieldId": "cert_match",
+              "fieldValue": "={{ $json.certificationMatch }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $json.summary }}"
+            },
+            {
+              "fieldId": "strengths",
+              "fieldValue": "={{ $json.strengths }}"
+            },
+            {
+              "fieldId": "weaknesses",
+              "fieldValue": "={{ $json.weaknesses }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "user_id",
+              "fieldValue": "={{ $('Webhook').item.json.body.user_id }}"
+            },
+            {
+              "fieldId": "job_title",
+              "fieldValue": "={{ $('Get job').item.json.title }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3248,
+        -96
+      ],
+      "id": "21478a61-bef1-40b1-aff0-3664da39fa91",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseOAuth2Api": {
+          "id": "mxl1iTpyvUcGa7fB",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-application",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        96
+      ],
+      "id": "13d93387-9982-450f-9492-ff6f5b05b915",
+      "name": "Webhook",
+      "webhookId": "11053705-ef74-43ca-a5a0-a45af05c2c6d"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"success\": false, \"message\": \"Could not read any text from this CV. Please upload a text-based PDF.\" }",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1648,
+        96
+      ],
+      "id": "6002b368-3ba1-4056-9b45-8634aa2769aa",
+      "name": "No text response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "=  {\n    \"success\": true,\n    \"id\": \"{{ $json.id }}\",\n    \"overall_score\": {{ $json.overall_score }},\n    \"status\": \"{{ $json.status }}\"\n  }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3472,
+        -96
+      ],
+      "id": "fc2ef45b-ee49-44cb-b342-2803ad8a6177",
+      "name": "Success response"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "get",
+        "projectRef": "hyclzpjewvcuzxnmelnh",
+        "tableId": "applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "keyValue": "={{ $json.body.user_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        304,
+        176
+      ],
+      "id": "729a2415-5203-45b4-a18c-158cf6def3f1",
+      "name": "Check if applied for",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseOAuth2Api": {
+          "id": "mxl1iTpyvUcGa7fB",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"message\": \"You have already made an application for this role.\"\n}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        976,
+        224
+      ],
+      "id": "a5188ac4-f998-45b8-9b47-fee9975a51d4",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "36d58916-ad0f-4c3e-9f25-399f9ae0a976",
+              "leftValue": "={{ $json.alreadyApplied }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        752,
+        176
+      ],
+      "id": "22b9edb8-38c2-45f2-9590-8663a1a15ab6",
+      "name": "If",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobTitle = $('Webhook').first().json.body.job_title;\n\nconst matches = $input.all()\n  .map(i => i.json)\n  .filter(r => r.id && r.job_title === jobTitle);\n\nreturn [{ json: { alreadyApplied: matches.length > 0 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        176
+      ],
+      "id": "e3cc287c-7e73-492a-bf34-15fb8a51f7fd",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        976,
+        0
+      ],
+      "id": "cf07a5f1-d7ce-46e1-8624-afea78bd0264",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Create a row').item.json.status }}",
+                    "rightValue": "Strong Match",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "aeea274a-0248-4e6c-a29b-555bed38cdfa"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Strong"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "34518fee-2ab3-4baf-9d8e-89a3dace17f3",
+                    "leftValue": "={{ $('Create a row').item.json.status }}",
+                    "rightValue": "Possible Match",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Possible"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "33f43b69-233f-4936-8122-11d45a6b3d69",
+                    "leftValue": "={{ $('Create a row').item.json.status }}",
+                    "rightValue": "Not a Match",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Not"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "ignoreCase": true
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        3696,
+        -128
+      ],
+      "id": "073c1103-dd7c-4c94-b6de-d41ecdb5bb8b",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook').item.json.body.email_address }}",
+        "subject": "=Your application for the {{ $('Webhook').item.json.body.job_title }} role: next steps",
+        "emailType": "text",
+        "message": "=Hi {{ $('Create a row').item.json.name }},  \n\nThank you for applying for the {{ $('Webhook').item.json.body.job_title }} role. Your CV is a strong match for the role, and our team will be in touch soon about next steps.  \n\nBest regards,\nThe Hiring Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3920,
+        -384
+      ],
+      "id": "02472f81-81bc-46a3-8dd2-d3cee7eabf28",
+      "name": "Strong Reply",
+      "webhookId": "5a2f4f7e-0863-43da-b98d-4929ed07de87",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "l4lvkdGGHMpHu7Qb",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook').item.json.body.email_address }}",
+        "subject": "=Your application for {{ $('Webhook').item.json.body.job_title }} role: under review",
+        "emailType": "text",
+        "message": "=Hi {{ $('Create a row').item.json.name }},  \n\nThank you for applying for the {{ $('Webhook').item.json.body.job_title }} role. We've received your application and our team is reviewing it. We'll contact you if we'd like to move forward.  \n\nBest regards, \nThe Hiring Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3920,
+        -192
+      ],
+      "id": "9cb7a80f-c8d5-4aab-80ba-bbf4dc6b1381",
+      "name": "Possible Reply",
+      "webhookId": "5b94085f-85c8-4262-bbd3-805e13d75235",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "l4lvkdGGHMpHu7Qb",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook').item.json.body.email_address }}",
+        "subject": "=Your application for the {{ $('Webhook').item.json.body.job_title }} role",
+        "emailType": "text",
+        "message": "=Hi {{ $('Create a row').item.json.name }},  \n\nThank you for your interest in the {{ $('Webhook').item.json.body.job_title }} role. After reviewing your application, we won't be moving forward at this time. We encourage you to apply for other roles that fit your background.  \n\nBest regards, \nThe Hiring Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3920,
+        0
+      ],
+      "id": "649b8013-3546-4f9b-9e44-07b2dc1dbf08",
+      "name": "Not Reply",
+      "webhookId": "08f09c62-1a1b-4630-b31e-437ba935b155",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "l4lvkdGGHMpHu7Qb",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook').item.json.body.email_address }}",
+        "subject": "=We've received your application for the {{ $('Webhook').item.json.body.job_title }} role",
+        "emailType": "text",
+        "message": "=Hi {{ $('Create a row').item.json.name || 'there' }},  \n\nThank you for applying for the {{ $('Webhook').item.json.body.job_title }} role. This email confirms that we've received your application. We'll be in touch once it has been reviewed. \n\nBest regards, \nThe Hiring Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3920,
+        192
+      ],
+      "id": "d7be407b-455d-4a0b-8e9b-1f10cd06891b",
+      "name": "Fallback Reply",
+      "webhookId": "76dbc86d-7d0a-46d3-b1b2-5ffb6801b7b4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "l4lvkdGGHMpHu7Qb",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Clean parsed CV1": {
+      "main": [
+        [
+          {
+            "node": "Score CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Not empty text": {
+      "main": [
+        [
+          {
+            "node": "Get job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No text response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calc Final Score": {
+      "main": [
+        [
+          {
+            "node": "Array inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CV": {
+      "main": [
+        [
+          {
+            "node": "Clean parsed CV1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score CV": {
+      "main": [
+        [
+          {
+            "node": "Calc Final Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array inputs": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from CV": {
+      "main": [
+        [
+          {
+            "node": "Not empty text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get job": {
+      "main": [
+        [
+          {
+            "node": "Parse CV",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check if applied for",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Success response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success response": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if applied for": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Extract from CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Strong Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Possible Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e31cadf9-20c3-4bc9-b149-e6f3dcba7f70",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c7cd9bb606fe518c673427d79ee4ac2fdd55fd63fb7315bac0b4b2cecca3fdc3"
+  },
+  "nodeGroups": [],
+  "id": "ENKkkHf8ACZUoUKk",
+  "tags": []
+}
